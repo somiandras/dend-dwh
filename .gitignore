@@ -1,0 +1,9 @@
+env/
+__pycache__/
+.vscode/
+.ipynb_checkpoints/
+.DStore
+.pytest_cache/
+
+# AWS credentials
+user.cfg
