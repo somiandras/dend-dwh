@@ -216,15 +216,19 @@ artist_table_insert = """
     INSERT INTO artist
     SELECT
         artist_id,
-        staging_song.artist_name AS name,
-        staging_song.artist_location AS location,
-        staging_song.artist_latitude AS latitude,
-        staging_song.artist_longitude AS longitude
-    FROM staging_song
+        staging.artist_name AS name,
+        staging.artist_location AS location,
+        staging.artist_latitude AS latitude,
+        staging.artist_longitude AS longitude
+    FROM (
+        SELECT *, row_number() OVER (PARTITION BY artist_id) as row_number
+        FROM staging_song
+    ) staging
     LEFT JOIN artist USING (artist_id)
     WHERE
+        staging.row_number = 1 AND
         artist.name IS NULL AND
-        artist_id IN (SELECT DISTINCT artist_id FROM songplay);
+        staging.artist_id IN (SELECT DISTINCT artist_id FROM songplay);
 """
 
 time_table_insert = """

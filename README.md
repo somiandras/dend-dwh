@@ -15,7 +15,20 @@ The goal of this project is to set up an Amazon Redshift datawarehouse to store 
     - 209 unique `song_id`
     - 194 unique `artist_id`
 
-The song dataset contains way more songs and artists that actually appear in the log event dataset. To avoid  oversized dimension tables I will only include songs and artists in the relevant tables that appear at least once in the songplay data.
+### Notes
+
+- **Unnecessary data in song dataset:** The song dataset contains way more songs and artists that actually appear in the log event dataset. To avoid  oversized dimension tables I will only include songs and artists in the relevant tables that appear at least once in the songplay data.
+
+- **Inconsistencies in artist data:** Even though song dataset contains only 194 unique `artist_id`s, `artist_name` might differ from song to song for the same `artist_id`, eg:
+
+```python
+# artist_id, artist_name, title, song_id
+('ARJGAUD1187FB505DA', 'Lange ft. Sarah Howells', 'Let It All Out', 'SONRTVW12AB017E5D1'),
+ ('ARJGAUD1187FB505DA', 'Lange', 'Happiness Happening', 'SOPBKFW12A8C145018'),
+ ('ARJGAUD1187FB505DA', 'Lan Ge', 'Hai Shang Liang Xiao (Album Version)', 'SOPFBQZ12A8C13B030')
+```
+
+In this case it's hard to choose the "right" artist name without any further research, so I followed a simplistic approach, and inserted the first instance for every artist in the `artist` table.
 
 ## Database schema
 
@@ -170,21 +183,25 @@ WHERE
 
 ### artist_table_insert
 
-This is very similarly to `song_table_insert`, with same assumptions on uniqueness and persistence of artist details. The latter is somewhat weaker given the artists' location might change, but for the sake of keeping this project as lean as possible I just went with it.
-
-Also only those artists are inserted that are included in `songplay` data.
+As mentioned in the data summary, artist names are not fully consistent. To ensure uniqueness of `artist_id` I decided to only include the first occurence of every artist in the `songplay` data, by using `row_number()` window function in the `staging` subquery.
 
 ```sql
 INSERT INTO artist
 SELECT
     artist_id,
-    staging_song.name,
-    staging_song.location,
-    staging_song.lattitude,
-    staging_song.longitude
-FROM staging_song
+    staging.artist_name AS name,
+    staging.artist_location AS location,
+    staging.artist_latitude AS latitude,
+    staging.artist_longitude AS longitude
+FROM (
+    SELECT *, row_number() OVER (PARTITION BY artist_id) as row_number
+    FROM staging_song
+) staging
 LEFT JOIN artist USING (artist_id)
-WHERE artist.name IS NULL AND artist_id IN (SELECT DISTINCT artist_id FROM songplay);
+WHERE
+    staging.row_number = 1 AND
+    artist.name IS NULL AND
+    staging.artist_id IN (SELECT DISTINCT artist_id FROM songplay);
 ```
 
 ### time_table_insert
